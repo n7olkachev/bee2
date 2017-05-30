@@ -27,7 +27,7 @@ int recover(char** secrets, int t)
 {
     char buf[256];
     octet m0[LEN];
-	octet s[LEN + 1];
+    octet s[LEN + 1];
     octet mi[LEN * t];
     octet si[LEN * t];
 
