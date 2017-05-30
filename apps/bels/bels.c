@@ -73,7 +73,7 @@ int share(int k, int t, const octet* secret)
         return -1;
     }
 
-	prngCOMBOStart(combo_state, utilNonce32());
+    prngCOMBOStart(combo_state, utilNonce32());
 
     belsStdM(m0, LEN, 0);
 
