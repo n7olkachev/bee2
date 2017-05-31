@@ -8,7 +8,47 @@
 #include <bee2/crypto/bels.h>
 #include <bee2/crypto/belt.h>
 #include <bee2/crypto/brng.h>
-#define LEN 16
+
+static const char hex_upper[] = "0123456789ABCDEF";
+static const char hex_lower[] = "0123456789abcdef";
+
+static const octet hex_dec_table[256] = {
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+	0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+	0xFF,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+	0xFF,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+};
+
+static octet hexToO(const char* hex)
+{
+	register octet hi;
+	register octet lo;
+	ASSERT(memIsValid(hex, 2));
+	hi = hex_dec_table[(octet)hex[0]];
+	lo = hex_dec_table[(octet)hex[1]];
+	ASSERT(hi != 0xFF && lo != 0xFF);
+	return hi << 4 | lo;
+}
+
+static void hexFromOUpper(char* hex, register octet o)
+{
+	ASSERT(memIsValid(hex, 2));
+	hex[0] = hex_upper[o >> 4];
+	hex[1] = hex_upper[o & 15];
+	o = 0;
+}
 
 int usage()
 {
@@ -25,36 +65,65 @@ int usage()
 
 int recover(char** secrets, int t)
 {
+    const int len = (strlen(secrets[0]) - 2) / 2;
+    int miNum = 0;
     char buf[256];
-    octet m0[LEN];
-    octet s[LEN + 1];
-    octet mi[LEN * t];
-    octet si[LEN * t];
-
-    belsStdM(m0, LEN, 0);
+    octet m0[len];
+	octet s[len + 1];
+    octet mi[len * t];
+    octet si[len * t];
 
     for (int i = 0; i < t; i++) {
-        memset(buf, 0, 256);
-        sscanf(secrets[i], "%6s", buf);
-        hexTo(mi + i * LEN, buf);
-        memset(buf, 0, 256);
-        sscanf(secrets[i] + 6, "%s", buf);
-        hexTo(si + i * LEN, buf);
+        if (!hexIsValid(secrets[i])) {
+            printf("secret parts must be a hex string\n");
+            return -1;
+        }
+    }
+    for (int i = 0; i < t; i++) {
+        for (int j = i + 1; j < t; j++) {
+            if (strlen(secrets[i]) != strlen(secrets[j])) {
+                printf("secret parts must have same length\n");
+                return -1;
+            } else if (secrets[i][0] == secrets[j][0] && secrets[i][1] == secrets[j][1]) {
+                printf("secret parts must have unique signatures\n");
+                return -1;
+            }
+        }
     }
 
-    belsRecover(s, t, LEN, si, m0, mi);
+    belsStdM(m0, len, 0);
 
-    printf("%s\n", s);
+    for (int i = 0; i < t; i++) {
+        miNum = hexToO(secrets[i]);
+        if (miNum < 0 || miNum > 16) {
+            printf("wrong signature!\n");
+            return -1;
+        }
+        belsStdM(mi + i * len, len, miNum);
+        memset(buf, 0, 256);
+        sscanf(secrets[i] + 2, "%s", buf);
+        hexTo(si + i * len, buf);
+    }
+
+    belsRecover(s, t, len, si, m0, mi);
+
+    hexFrom(buf, s, len);
+
+    printf("%s\n", buf);
     return 1;
 }
 
 int share(int k, int t, const octet* secret)
 {
+    const int len = strlen((const char*)secret) / 2;
     char buf[256];
-    octet m0[LEN];
-    octet mi[LEN * k];
-    octet si[LEN * k];
+    octet secretData[len];
+    octet m0[len];
+    octet mi[len * k];
+    octet si[len * k];
     octet combo_state[512];
+    char hex[2];
+    memset(buf, 0, 256);
 
     if (t < 2) {
         printf("t must be > 1\n");
@@ -68,25 +137,32 @@ int share(int k, int t, const octet* secret)
     } else if (k > 16) {
         printf("k must be < 17\n");
         return -1;
-    } else if (strlen((const char *)secret) > 16) {
-        printf("secret length must be < 17\n");
+    } else if (t > k) {
+        printf("t must be <= k\n");
+        return -1;
+    } else if (len != 16 && len != 24 && len != 32) {
+        printf("secret length must equals 16 or 24 or 32 bytes\n");
+        return -1;
+    } else if (!hexIsValid((const char *)secret)) {
+        printf("secret must be a hex string\n");
         return -1;
     }
 
-    prngCOMBOStart(combo_state, utilNonce32());
+    hexTo(secretData, (const char*)secret);
 
-    belsStdM(m0, LEN, 0);
+	prngCOMBOStart(combo_state, utilNonce32());
+
+    belsStdM(m0, len, 0);
 
     for (int i = 0; i < k; i++) {
-        belsStdM(mi + i * LEN, LEN, i + 1);
+        belsStdM(mi + i * len, len, i + 1);
     }
-    belsShare(si, k, t, LEN, secret, m0, mi, prngCOMBOStepR, combo_state);
+    belsShare(si, k, t, len, secretData, m0, mi, prngCOMBOStepR, combo_state);
 
     for (int i = 0; i < k; i++) {
-        hexFrom(buf, mi + i * LEN, LEN);
-        printf("%.6s", buf);
-        hexFrom(buf, si + i * LEN, LEN);
-        printf("%s\n", buf);
+        hexFrom(buf, si + i * len, len);
+        hexFromOUpper(hex, i + 1);
+        printf("%.2s%s\n", hex, buf);
     }
 
     return 1;
