@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <bee2/core/mem.h>
 #include <bee2/core/hex.h>
-#include <bee2/core/prng.h>
+#include <bee2/core/rng.h>
 #include <bee2/core/str.h>
 #include <bee2/core/util.h>
 #include <bee2/crypto/bels.h>
@@ -55,9 +55,12 @@ int usage()
     printf(
         "Usage:\n"
         "  bels share -s <secret> -t <t> -k <k>\n"
+        "    secret - secret string in hex representation"
+        "    t - minimal amount of secret parts to recover secret"
+        "    k - total amount of secret parts"
         "  bels recover [SECRET]...\n"
         "Examples:\n"
-        "  bels share -s 0123456789012345 -t 2 -k 4\n"
+        "  bels share -s 30313233343536373839313233343536 -t 2 -k 4\n"
         "  bels recover 410C006487EC10027FBAA66DC516113DA2EF71 15800004075E3808FFCBE8E925037C13E46066\n"
     );
     return 1;
@@ -121,7 +124,9 @@ int share(int k, int t, const octet* secret)
     octet m0[len];
     octet mi[len * k];
     octet si[len * k];
-    octet combo_state[512];
+    octet rngState[512];
+    octet rngBuf[2500];
+	size_t rngRead;
     char hex[2];
     memset(buf, 0, 256);
 
@@ -150,14 +155,14 @@ int share(int k, int t, const octet* secret)
 
     hexTo(secretData, (const char*)secret);
 
-	prngCOMBOStart(combo_state, utilNonce32());
+	rngCreate(0, rngState);
 
     belsStdM(m0, len, 0);
 
     for (int i = 0; i < k; i++) {
         belsStdM(mi + i * len, len, i + 1);
     }
-    belsShare(si, k, t, len, secretData, m0, mi, prngCOMBOStepR, combo_state);
+    belsShare(si, k, t, len, secretData, m0, mi, rngStepR, rngState);
 
     for (int i = 0; i < k; i++) {
         hexFrom(buf, si + i * len, len);
