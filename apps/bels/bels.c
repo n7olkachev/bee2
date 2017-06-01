@@ -55,9 +55,9 @@ int usage()
     printf(
         "Usage:\n"
         "  bels share -s <secret> -t <t> -k <k>\n"
-        "    secret - secret string in hex representation"
-        "    t - minimal amount of secret parts to recover secret"
-        "    k - total amount of secret parts"
+        "    secret - secret string in hex representation\n"
+        "    t - minimal amount of secret parts to recover secret\n"
+        "    k - total amount of secret parts\n"
         "  bels recover [SECRET]...\n"
         "Examples:\n"
         "  bels share -s 30313233343536373839313233343536 -t 2 -k 4\n"
